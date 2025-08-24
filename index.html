@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rehberger – Vier Asse Rallye</title>
+
+<!-- PWA / iOS Meta -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a2230">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rehberger">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<style>
+  :root { --gap: 12px; --shadow: 0 8px 18px rgba(0,0,0,.25); }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(1200px 600px at 70% -20%, #2b3a55, #1a2230);
+    color:#f5f7fb; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  }
+  .game { width:min(1100px, 96vw); display:grid; gap:var(--gap); grid-template-rows:auto auto 1fr auto; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:var(--gap); }
+  h1 { margin:0; font-size: clamp(18px, 2.6vw, 26px); letter-spacing:.3px; }
+  .controls { display:flex; gap:var(--gap); flex-wrap:wrap; }
+  button {
+    border:none; padding:10px 14px; border-radius: 10px; font-weight: 700; cursor:pointer;
+    background:#ff7a59; color:#fff; box-shadow: var(--shadow); transition: transform .05s ease, filter .15s ease;
+  }
+  button:active { transform: translateY(1px) scale(.99); filter:brightness(.92); }
+  .hud { display:flex; gap:16px; font-weight:700; align-items:center; }
+  .k { font-variant-numeric: tabular-nums; }
+  .board { background: rgba(255,255,255,.06); border-radius: 14px; padding: 12px; }
+  .tracks { display:grid; grid-template-rows: auto repeat(4, 74px); gap: 10px; }
+  .cols  { display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .cell {
+    min-height: 64px; border-radius: 12px; background: rgba(255,255,255,.07);
+    border: 2px dashed rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center;
+  }
+  .toprow .cell { min-height: 52px; }
+  .chip {
+    background:#fff; color:#111; border-radius: 999px; padding: 8px 12px; font-weight: 900; box-shadow: var(--shadow);
+    display:inline-flex; align-items:center; gap:8px; min-width: 66px; justify-content:center;
+  }
+  .chip.red { color:#c22; }
+  .chip.black { color:#111; }
+  .card {
+    width: 64px; height: 86px; background:#fff; color:#111; border-radius: 10px; padding: 6px;
+    display:flex; flex-direction:column; align-items:center; justify-content:space-between; box-shadow: var(--shadow);
+  }
+  .card .corner { font-weight:900; font-size:14px; }
+  .card .suit { font-size:24px; }
+  .back { background: linear-gradient(135deg,#224,#557); color: transparent; }
+  .sred { color:#c2362b; } .sblk { color:#222; }
+  .msg { opacity:.85; font-size: 13px; }
+  .end, .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .panel { background:#fafafa; color:#111; border-radius:14px; padding:22px; width: min(520px, 92vw); box-shadow: 0 18px 44px rgba(0,0,0,.42); }
+  .panel h2 { margin-top:0 }
+  .pill { background:#eef2f7; border-radius: 999px; padding: 6px 12px; font-weight:700; }
+  .suitChoice { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin:15px 0; }
+  .suitBtn {
+    border:none; border-radius:10px; padding:12px 18px; font-size:18px; font-weight:700; cursor:pointer;
+    box-shadow: var(--shadow); background:#fff; color:#111;
+  }
+  .dirChoice { display:flex; gap:10px; justify-content:center; }
+</style>
+</head>
+<body>
+<div class="game">
+  <header>
+    <h1>♠ ♥ ♦ ♣ Rehberger</h1>
+    <div class="controls">
+      <button id="drawBtn">Karte ziehen</button>
+      <button id="restartBtn">Neustart</button>
+    </div>
+    <div class="hud">
+      <div>🃏 Ziehdeck: <span id="deckCount" class="k">100</span></div>
+      <div>🏁 Ziel: Spalte <span class="k">5</span></div>
+      <div>⏱️ Züge: <span id="moves" class="k">0</span> / 15</div>
+    </div>
+  </header>
+
+  <div class="board">
+    <div class="cols toprow" id="hazards"></div>
+    <div class="tracks" id="tracks"></div>
+  </div>
+
+  <footer class="msg" id="msg">Ziehe Karten …</footer>
+</div>
+
+<!-- Spielende -->
+<div class="end" id="end">
+  <div class="panel">
+    <h2 id="endTitle">Spielende</h2>
+    <p id="endText"></p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <div class="pill">Züge: <span id="finalMoves" class="k">0</span></div>
+      <div class="pill">Rest im Deck: <span id="finalDeck" class="k">0</span></div>
+    </div>
+    <div style="display:flex; gap:10px; margin-top: 14px;">
+      <button id="again">Nochmal spielen</button>
+      <button id="close">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- König-Auswahl -->
+<div class="overlay" id="kingOverlay">
+  <div class="panel">
+    <h2>König gezogen!</h2>
+    <p>Wähle ein Ass:</p>
+    <div class="suitChoice" id="suitChoice"></div>
+    <div class="dirChoice" id="dirChoice" style="display:none;">
+      <button class="suitBtn" data-dir="+1">▶️ Vorwärts</button>
+      <button class="suitBtn" data-dir="-1">◀️ Rückwärts</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SUITS = ["♠","♥","♦","♣"];
+  const isRed = s => (s==="♥"||s==="♦");
+  const $ = sel => document.querySelector(sel);
+  const el = (t,c,txt)=>{ const e=document.createElement(t); if(c) e.className=c; if(txt!=null) e.textContent=txt; return e; };
+  const shuffle = arr => { for (let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
+
+  const CONFIG = { goalCol:5, hazards:4, maxMoves:15 };
+
+  let tracks, deck, hazardRow, hazardNext, moves, lastSuit, discard;
+  let pendingKing = null;
+
+  function makeDrawDeck() {
+    const ranks = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+    const A = []; for (const s of SUITS) for (const r of ranks) if(r!=="A") A.push({s,r});
+    const B = []; for (const s of SUITS) for (const r of ranks) B.push({s,r});
+    return shuffle([...A,...B]);
+  }
+  function makeHazards() {
+    const pool=[]; for (const s of SUITS) for (let i=0;i<13;i++) pool.push({s});
+    shuffle(pool);
+    return pool.slice(0, CONFIG.hazards).map((c,i)=>({ suit:c.s, revealed:false, col:i+1 }));
+  }
+
+  function restart() {
+    tracks=[{suit:"♠",pos:1},{suit:"♥",pos:1},{suit:"♦",pos:1},{suit:"♣",pos:1}];
+    deck=makeDrawDeck();
+    hazardRow=makeHazards(); hazardNext=0;
+    moves=0; lastSuit=null; discard=[];
+    $("#end").style.display="none"; $("#kingOverlay").style.display="none";
+    render(); setMsg("Rehberger: Neues Spiel gestartet!");
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('service-worker.js'); }
+  }
+
+  function drawCard() {
+    if (!deck.length) return endGame(false,"Deck ist leer.");
+    const card=deck.pop(); discard.push(card); moves++;
+
+    if (card.r!=="K"&&card.r!=="Q"&&card.r!=="J") {
+      const tr=tracks.find(t=>t.suit===card.s); tr.pos=Math.min(CONFIG.goalCol,tr.pos+1);
+    }
+
+    if (card.r==="K") { pendingKing=card; showKingOverlay(); return; }
+    if (card.r==="Q") { shuffle(tracks); setMsg("Dame! Reihenfolge der Asse gemischt."); }
+    if (card.r==="J") { for(const t of tracks) t.pos=Math.max(1,t.pos-1); setMsg("Bube! Alle Asse 1 zurück."); }
+
+    checkSpecial(card);
+  }
+
+  function checkSpecial(card){
+    if (lastSuit && card.s===lastSuit) {
+      if (hazardNext<hazardRow.length) {
+        hazardRow[hazardNext].revealed=true;
+        const punished=tracks.find(t=>t.suit===hazardRow[hazardNext].suit);
+        if (punished) punished.pos=Math.max(1,punished.pos-1);
+        hazardNext++;
+      }
+    }
+    lastSuit=card.s;
+    if (tracks.some(t=>t.pos===CONFIG.goalCol)) return endGame(true,"Ein Ass hat Spalte 5 erreicht!");
+    if (moves>=CONFIG.maxMoves && !tracks.some(t=>t.pos===CONFIG.goalCol)) return endGame(false,"15 Züge vorbei – kein Ass in Spalte 5.");
+    if (hazardRow.every(h=>h.revealed)) { hazardRow=makeHazards(); hazardNext=0; setMsg("Alle Hindernisse neu gezogen!"); }
+    render();
+  }
+
+  function showKingOverlay(){
+    $("#kingOverlay").style.display="flex";
+    const sc=$("#suitChoice"); sc.innerHTML="";
+    for(const s of SUITS){
+      const b=el("button","suitBtn",s+" Ass"); b.addEventListener("click",()=>chooseSuit(s));
+      sc.append(b);
+    }
+    $("#dirChoice").style.display="none";
+  }
+  function chooseSuit(suit){
+    pendingKing.suitChoice=suit;
+    $("#dirChoice").style.display="flex";
+    $("#dirChoice").querySelectorAll("button").forEach(b=>{
+      b.onclick=()=>{ applyKingMove(suit,b.dataset.dir); };
+    });
+  }
+  function applyKingMove(suit,dir){
+    const tr=tracks.find(t=>t.suit===suit);
+    if (tr){ if(dir==="+1") tr.pos=Math.min(CONFIG.goalCol,tr.pos+1);
+             if(dir==="-1") tr.pos=Math.max(1,tr.pos-1); }
+    $("#kingOverlay").style.display="none";
+    checkSpecial(pendingKing);
+    pendingKing=null;
+  }
+
+  function suitChip(s){ return el("div","chip "+(isRed(s)?"red":"black"),s+" Ass"); }
+  function cardView(card){ const c=el("div","card"); c.append(el("div","corner",card.r+card.s), el("div","suit "+(isRed(card.s)?"sred":"sblk"),card.s), el("div","corner",card.r+card.s)); return c;}
+  function backView(){ const c=el("div","card back"); return c; }
+
+  function render() {
+    $("#deckCount").textContent=deck.length; $("#moves").textContent=moves;
+    const hz=$("#hazards"); hz.innerHTML=""; for (let i=0;i<CONFIG.hazards;i++){ const cell=el("div","cell"); const item=hazardRow[i]; if(item.revealed) cell.append(cardView({s:item.suit,r:"?"})); else cell.append(backView()); hz.append(cell);}
+    const trRoot=$("#tracks"); trRoot.innerHTML=""; const header=el("div","cols"); for(let c=1;c<=CONFIG.goalCol;c++){const cell=el("div","cell"); cell.textContent="Spalte "+c; header.append(cell);} trRoot.append(header);
+    for (const t of tracks){ const row=el("div","cols"); for(let c=1;c<=CONFIG.goalCol;c++){ const cell=el("div","cell"); if(c===t.pos) cell.append(suitChip(t.suit)); row.append(cell);} trRoot.append(row);}
+  }
+  function setMsg(txt){ $("#msg").textContent=txt; }
+  function endGame(win,text){ render(); $("#endTitle").textContent=win?"🎉 Sieg!":"Spielende"; $("#endText").textContent=text; $("#finalMoves").textContent=moves; $("#finalDeck").textContent=deck.length; $("#end").style.display="flex"; }
+
+  $("#drawBtn").addEventListener("click",drawCard);
+  $("#restartBtn").addEventListener("click",restart);
+  $("#again").addEventListener("click",restart);
+  $("#close").addEventListener("click",()=>$("#end").style.display="none");
+
+  restart();
+})();
+</script>
+</body>
+</html>
